@@ -16,11 +16,7 @@ class AppConfig {
   static const Duration passwordTimeout = Duration(seconds: 20);
 }
 
-enum AppScreenState {
-  idle,
-  password,
-  main,
-}
+enum AppScreenState { idle, password, main }
 
 class RobotLogoApp extends StatelessWidget {
   const RobotLogoApp({super.key});
@@ -136,8 +132,10 @@ class _RobotShellState extends State<RobotShell> {
     }
 
     setState(() {
-      _passwordController.text =
-          _passwordController.text.substring(0, _passwordController.text.length - 1);
+      _passwordController.text = _passwordController.text.substring(
+        0,
+        _passwordController.text.length - 1,
+      );
       _errorText = null;
     });
   }
@@ -199,9 +197,9 @@ class _RobotShellState extends State<RobotShell> {
               duration: const Duration(milliseconds: 220),
               child: switch (_screenState) {
                 AppScreenState.idle => IdleView(
-                    key: const ValueKey('idle'),
-                    onTapEnter: _goToPassword,
-                  ),
+                  key: const ValueKey('idle'),
+                  onTapEnter: _goToPassword,
+                ),
                 AppScreenState.password => PasswordView(
                   key: const ValueKey('password'),
                   controller: _passwordController,
@@ -213,9 +211,9 @@ class _RobotShellState extends State<RobotShell> {
                   onCancel: _goToIdle,
                 ),
                 AppScreenState.main => MainView(
-                    key: const ValueKey('main'),
-                    onExit: _backToIdleFromMain,
-                  ),
+                  key: const ValueKey('main'),
+                  onExit: _backToIdleFromMain,
+                ),
               },
             ),
           ),
@@ -270,10 +268,7 @@ class IdleView extends StatelessWidget {
               padding: EdgeInsets.only(bottom: 24),
               child: Text(
                 '触摸屏幕进入',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Color(0xFF4A4A4A),
-                ),
+                style: TextStyle(fontSize: 18, color: Color(0xFF4A4A4A)),
               ),
             ),
           ],
@@ -325,10 +320,7 @@ class PasswordView extends StatelessWidget {
                 const Text(
                   '请输入密码',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 24),
                 TextField(
@@ -349,10 +341,7 @@ class PasswordView extends StatelessWidget {
                   onConfirm: onSubmit,
                 ),
                 const SizedBox(height: 8),
-                TextButton(
-                  onPressed: onCancel,
-                  child: const Text('返回待机页'),
-                ),
+                TextButton(onPressed: onCancel, child: const Text('返回待机页')),
               ],
             ),
           ),
@@ -377,7 +366,7 @@ class _Keypad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final buttons = <Widget>[
+    final buttons = <String>[
       '1',
       '2',
       '3',
@@ -407,10 +396,7 @@ class _Keypad extends StatelessWidget {
           _ => isDigit ? () => onDigit(label) : onConfirm,
         };
 
-        return FilledButton.tonal(
-          onPressed: handler,
-          child: Text(label),
-        );
+        return FilledButton.tonal(onPressed: handler, child: Text(label));
       }).toList(),
     );
   }
@@ -465,10 +451,7 @@ class MainView extends StatelessWidget {
                 child: Text(
                   '这里放你们真正的操作界面',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 22,
-                  ),
+                  style: TextStyle(color: Colors.white70, fontSize: 22),
                 ),
               ),
             ),

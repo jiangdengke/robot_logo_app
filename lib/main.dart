@@ -334,16 +334,17 @@ class _RobotShellState extends State<RobotShell> {
       child: PopScope(
         canPop: false,
         child: Scaffold(
-          body: SafeArea(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: switch (_screenState) {
-                AppScreenState.idle => IdleView(
-                  key: const ValueKey('idle'),
-                  logoImagePath: _logoImagePath,
-                  onTapEnter: _goToPassword,
-                ),
-                AppScreenState.password => PasswordView(
+          body: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: switch (_screenState) {
+              AppScreenState.idle => IdleView(
+                key: const ValueKey('idle'),
+                logoImagePath: _logoImagePath,
+                onTapEnter: _goToPassword,
+              ),
+              AppScreenState.password => SafeArea(
+                key: const ValueKey('password'),
+                child: PasswordView(
                   key: const ValueKey('password'),
                   controller: _passwordController,
                   errorText: _errorText,
@@ -353,7 +354,10 @@ class _RobotShellState extends State<RobotShell> {
                   onClear: _clearPasswordBuffer,
                   onCancel: _goToIdle,
                 ),
-                AppScreenState.main => MainView(
+              ),
+              AppScreenState.main => SafeArea(
+                key: const ValueKey('main'),
+                child: MainView(
                   key: const ValueKey('main'),
                   logoImagePath: _logoImagePath,
                   isPickingLogo: _isPickingLogo,
@@ -361,8 +365,8 @@ class _RobotShellState extends State<RobotShell> {
                   onClearLogo: _clearLogoImage,
                   onExit: _backToIdleFromMain,
                 ),
-              },
-            ),
+              ),
+            },
           ),
         ),
       ),
@@ -388,39 +392,58 @@ class IdleView extends StatelessWidget {
       height: double.infinity,
       child: InkWell(
         onTap: onTapEnter,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Stack(
+          fit: StackFit.expand,
           children: [
-            Expanded(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      minWidth: 220,
-                      minHeight: 220,
-                      maxWidth: 560,
-                      maxHeight: 560,
-                    ),
-                    child: _LogoFrame(
-                      imagePath: logoImagePath,
-                      emptyIcon: Icons.storefront_rounded,
-                      emptyText: '请选择 Logo',
-                    ),
-                  ),
+            _FullscreenLogo(
+              imagePath: logoImagePath,
+              emptyIcon: Icons.storefront_rounded,
+              emptyText: '请选择 Logo',
+            ),
+            if (logoImagePath == null || logoImagePath!.isEmpty)
+              const Positioned(
+                left: 24,
+                right: 24,
+                bottom: 24,
+                child: Text(
+                  '触摸屏幕进入',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 18, color: Color(0xFF4A4A4A)),
                 ),
               ),
-            ),
-            const Padding(
-              padding: EdgeInsets.only(bottom: 24),
-              child: Text(
-                '触摸屏幕进入',
-                style: TextStyle(fontSize: 18, color: Color(0xFF4A4A4A)),
-              ),
-            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _FullscreenLogo extends StatelessWidget {
+  const _FullscreenLogo({
+    required this.imagePath,
+    required this.emptyIcon,
+    required this.emptyText,
+  });
+
+  final String? imagePath;
+  final IconData emptyIcon;
+  final String emptyText;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasImage = imagePath != null && imagePath!.isNotEmpty;
+    if (!hasImage) {
+      return _LogoEmptyState(icon: emptyIcon, text: emptyText);
+    }
+
+    return Image.file(
+      File(imagePath!),
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) {
+        return _LogoEmptyState(icon: emptyIcon, text: emptyText);
+      },
     );
   }
 }

@@ -2,13 +2,8 @@ name: Build APK
 
 on:
   push:
-    branches:
-      - master
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - master
   workflow_dispatch:
 
 permissions:
@@ -47,14 +42,11 @@ jobs:
       - name: Build APK
         run: flutter build apk --release
 
-      - name: Rename APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/robot-logo-app-release.apk
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: robot-logo-app-release-apk
-          path: build/app/outputs/flutter-apk/robot-logo-app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
 
       - name: Create GitHub Release
@@ -62,4 +54,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          files: build/app/outputs/flutter-apk/robot-logo-app-release.apk
+          files: build/app/outputs/flutter-apk/app-release.apk

@@ -1,4 +1,4 @@
-package com.example.robot_logo_app
+package com.jiangdengke.robotlogoapp
 
 import io.flutter.embedding.android.FlutterActivity
 

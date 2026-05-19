@@ -20,7 +20,7 @@
 - 默认密码：`2580`
 - 待机超时：`15` 秒
 - 密码页超时：`20` 秒
-- 当前版本：`1.0.2+3`
+- 当前版本：`1.0.3+4`
 
 相关配置目前在 [lib/main.dart](lib/main.dart) 的 `AppConfig` 中：
 
@@ -77,14 +77,14 @@ GitHub Actions 只在推送 `v*` 标签时自动构建 APK 并创建 GitHub Rele
 发布新版本示例：
 
 ```bash
-git tag v1.0.2
-git push origin v1.0.2
+git tag v1.0.3
+git push origin v1.0.3
 ```
 
 如果需要先升级应用版本号，修改 [pubspec.yaml](pubspec.yaml)：
 
 ```yaml
-version: 1.0.2+3
+version: 1.0.3+4
 ```
 
 ## 适用场景

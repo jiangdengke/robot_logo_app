@@ -15,10 +15,13 @@ void main() {
 
 class AppConfig {
   static const String appTitle = 'Robot Logo App';
-  static const String accessCode = '2580';
+  static const String defaultAccessCode = '2580';
+  static const int minAccessCodeLength = 4;
+  static const int maxAccessCodeLength = 8;
   static const Duration idleTimeout = Duration(seconds: 15);
   static const Duration passwordTimeout = Duration(seconds: 20);
   static const String logoPathKey = 'robot_logo_image_path';
+  static const String accessCodeKey = 'robot_access_code';
 }
 
 enum AppScreenState { idle, password, main }
@@ -58,13 +61,16 @@ class _RobotShellState extends State<RobotShell> {
   Timer? _idleTimer;
   Timer? _passwordTimer;
   String? _logoImagePath;
+  String _accessCode = AppConfig.defaultAccessCode;
   bool _isPickingLogo = false;
+  bool _isChangingPassword = false;
   String? _errorText;
 
   @override
   void initState() {
     super.initState();
     _loadSavedLogo();
+    _loadSavedAccessCode();
     _restartIdleTimer();
   }
 
@@ -82,7 +88,7 @@ class _RobotShellState extends State<RobotShell> {
       if (!mounted) {
         return;
       }
-      if (_isPickingLogo) {
+      if (_isPickingLogo || _isChangingPassword) {
         return;
       }
       _goToIdle();
@@ -139,6 +145,22 @@ class _RobotShellState extends State<RobotShell> {
     }
 
     await prefs.remove(AppConfig.logoPathKey);
+  }
+
+  Future<void> _loadSavedAccessCode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedAccessCode = prefs.getString(AppConfig.accessCodeKey);
+    if (!_isValidAccessCode(savedAccessCode)) {
+      return;
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _accessCode = savedAccessCode!;
+    });
   }
 
   Future<void> _pickLogoImage() async {
@@ -249,11 +271,68 @@ class _RobotShellState extends State<RobotShell> {
     return '.png';
   }
 
+  bool _isValidAccessCode(String? value) {
+    if (value == null) {
+      return false;
+    }
+
+    final isValidLength =
+        value.length >= AppConfig.minAccessCodeLength &&
+        value.length <= AppConfig.maxAccessCodeLength;
+    return isValidLength && RegExp(r'^\d+$').hasMatch(value);
+  }
+
+  Future<void> _showChangePasswordDialog() async {
+    if (_isChangingPassword) {
+      return;
+    }
+
+    setState(() {
+      _isChangingPassword = true;
+    });
+    _idleTimer?.cancel();
+    _passwordTimer?.cancel();
+
+    try {
+      final newAccessCode = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) {
+          return ChangePasswordDialog(currentAccessCode: _accessCode);
+        },
+      );
+      if (newAccessCode == null) {
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(AppConfig.accessCodeKey, newAccessCode);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _accessCode = newAccessCode;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('密码已更新')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isChangingPassword = false;
+        });
+      }
+      _restartIdleTimer();
+    }
+  }
+
   void _appendPasswordDigit(String digit) {
     if (_screenState != AppScreenState.password) {
       return;
     }
-    if (_passwordController.text.length >= AppConfig.accessCode.length) {
+    if (_passwordController.text.length >= _accessCode.length) {
       return;
     }
 
@@ -262,7 +341,7 @@ class _RobotShellState extends State<RobotShell> {
       _errorText = null;
     });
 
-    if (_passwordController.text.length == AppConfig.accessCode.length) {
+    if (_passwordController.text.length == _accessCode.length) {
       _unlock();
     }
   }
@@ -294,7 +373,7 @@ class _RobotShellState extends State<RobotShell> {
   }
 
   void _unlock() {
-    if (_passwordController.text == AppConfig.accessCode) {
+    if (_passwordController.text == _accessCode) {
       _passwordTimer?.cancel();
       setState(() {
         _screenState = AppScreenState.main;
@@ -363,6 +442,7 @@ class _RobotShellState extends State<RobotShell> {
                   isPickingLogo: _isPickingLogo,
                   onPickLogo: _pickLogoImage,
                   onClearLogo: _clearLogoImage,
+                  onChangePassword: _showChangePasswordDialog,
                   onExit: _backToIdleFromMain,
                 ),
               ),
@@ -634,6 +714,168 @@ class _Keypad extends StatelessWidget {
   }
 }
 
+class ChangePasswordDialog extends StatefulWidget {
+  const ChangePasswordDialog({super.key, required this.currentAccessCode});
+
+  final String currentAccessCode;
+
+  @override
+  State<ChangePasswordDialog> createState() => _ChangePasswordDialogState();
+}
+
+class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
+  final TextEditingController _oldPasswordController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _oldPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final oldPassword = _oldPasswordController.text;
+    final newPassword = _newPasswordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (oldPassword != widget.currentAccessCode) {
+      setState(() {
+        _errorText = '旧密码不正确';
+      });
+      return;
+    }
+
+    if (!_isValidNewPassword(newPassword)) {
+      setState(() {
+        _errorText =
+            '新密码必须是 ${AppConfig.minAccessCodeLength}-${AppConfig.maxAccessCodeLength} 位数字';
+      });
+      return;
+    }
+
+    if (newPassword != confirmPassword) {
+      setState(() {
+        _errorText = '两次输入的新密码不一致';
+      });
+      return;
+    }
+
+    if (newPassword == oldPassword) {
+      setState(() {
+        _errorText = '新密码不能和旧密码相同';
+      });
+      return;
+    }
+
+    Navigator.of(context).pop(newPassword);
+  }
+
+  bool _isValidNewPassword(String value) {
+    final isValidLength =
+        value.length >= AppConfig.minAccessCodeLength &&
+        value.length <= AppConfig.maxAccessCodeLength;
+    return isValidLength && RegExp(r'^\d+$').hasMatch(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final inputFormatters = [
+      FilteringTextInputFormatter.digitsOnly,
+      LengthLimitingTextInputFormatter(AppConfig.maxAccessCodeLength),
+    ];
+
+    return AlertDialog(
+      title: const Text('修改密码'),
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _PasswordInputField(
+                controller: _oldPasswordController,
+                labelText: '旧密码',
+                inputFormatters: inputFormatters,
+              ),
+              const SizedBox(height: 12),
+              _PasswordInputField(
+                controller: _newPasswordController,
+                labelText: '新密码',
+                inputFormatters: inputFormatters,
+              ),
+              const SizedBox(height: 12),
+              _PasswordInputField(
+                controller: _confirmPasswordController,
+                labelText: '确认新密码',
+                inputFormatters: inputFormatters,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${AppConfig.minAccessCodeLength}-${AppConfig.maxAccessCodeLength} 位数字，修改后立即生效。',
+                style: const TextStyle(color: Color(0xFF64748B)),
+              ),
+              if (_errorText != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  _errorText!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('保存')),
+      ],
+    );
+  }
+}
+
+class _PasswordInputField extends StatelessWidget {
+  const _PasswordInputField({
+    required this.controller,
+    required this.labelText,
+    required this.inputFormatters,
+    this.textInputAction = TextInputAction.next,
+    this.onSubmitted,
+  });
+
+  final TextEditingController controller;
+  final String labelText;
+  final List<TextInputFormatter> inputFormatters;
+  final TextInputAction textInputAction;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      obscureText: true,
+      keyboardType: TextInputType.number,
+      textInputAction: textInputAction,
+      inputFormatters: inputFormatters,
+      onSubmitted: onSubmitted,
+      decoration: InputDecoration(
+        labelText: labelText,
+        border: const OutlineInputBorder(),
+      ),
+    );
+  }
+}
+
 class MainView extends StatelessWidget {
   const MainView({
     super.key,
@@ -641,6 +883,7 @@ class MainView extends StatelessWidget {
     required this.isPickingLogo,
     required this.onPickLogo,
     required this.onClearLogo,
+    required this.onChangePassword,
     required this.onExit,
   });
 
@@ -648,6 +891,7 @@ class MainView extends StatelessWidget {
   final bool isPickingLogo;
   final VoidCallback onPickLogo;
   final VoidCallback onClearLogo;
+  final VoidCallback onChangePassword;
   final VoidCallback onExit;
 
   @override
@@ -742,6 +986,11 @@ class MainView extends StatelessWidget {
                             : onClearLogo,
                         icon: const Icon(Icons.delete_outline_rounded),
                         label: const Text('清除 Logo'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: isPickingLogo ? null : onChangePassword,
+                        icon: const Icon(Icons.lock_reset_rounded),
+                        label: const Text('修改密码'),
                       ),
                     ],
                   ),

@@ -15,4 +15,22 @@ void main() {
     expect(find.text('请输入密码'), findsNothing);
     expect(find.text('主界面'), findsNothing);
   });
+
+  testWidgets('shows change password entry after unlock', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const RobotLogoApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('触摸屏幕进入'));
+    await tester.pumpAndSettle();
+
+    for (final digit in ['2', '5', '8', '0']) {
+      await tester.tap(find.text(digit));
+      await tester.pumpAndSettle();
+    }
+
+    expect(find.text('主界面'), findsOneWidget);
+    expect(find.text('修改密码'), findsOneWidget);
+  });
 }

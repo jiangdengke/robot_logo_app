@@ -32,5 +32,9 @@ void main() {
 
     expect(find.text('主界面'), findsOneWidget);
     expect(find.text('修改密码'), findsOneWidget);
+    expect(find.text('完整自适应'), findsOneWidget);
+    expect(find.text('铺满裁剪'), findsOneWidget);
+    expect(find.text('拉伸铺满'), findsOneWidget);
+    expect(find.text('90°'), findsOneWidget);
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,9 +23,37 @@ class AppConfig {
   static const Duration passwordTimeout = Duration(seconds: 20);
   static const String logoPathKey = 'robot_logo_image_path';
   static const String accessCodeKey = 'robot_access_code';
+  static const String logoFitKey = 'robot_logo_fit';
+  static const String logoRotationKey = 'robot_logo_rotation';
 }
 
 enum AppScreenState { idle, password, main }
+
+enum LogoFitMode {
+  contain('contain', '完整自适应'),
+  cover('cover', '铺满裁剪'),
+  fill('fill', '拉伸铺满');
+
+  const LogoFitMode(this.storageValue, this.label);
+
+  final String storageValue;
+  final String label;
+
+  BoxFit get boxFit {
+    return switch (this) {
+      LogoFitMode.contain => BoxFit.contain,
+      LogoFitMode.cover => BoxFit.cover,
+      LogoFitMode.fill => BoxFit.fill,
+    };
+  }
+
+  static LogoFitMode fromStorageValue(String? value) {
+    return LogoFitMode.values.firstWhere(
+      (mode) => mode.storageValue == value,
+      orElse: () => LogoFitMode.contain,
+    );
+  }
+}
 
 class RobotLogoApp extends StatelessWidget {
   const RobotLogoApp({super.key});
@@ -62,6 +91,8 @@ class _RobotShellState extends State<RobotShell> {
   Timer? _passwordTimer;
   String? _logoImagePath;
   String _accessCode = AppConfig.defaultAccessCode;
+  LogoFitMode _logoFitMode = LogoFitMode.contain;
+  int _logoRotationTurns = 0;
   bool _isPickingLogo = false;
   bool _isChangingPassword = false;
   String? _errorText;
@@ -71,6 +102,7 @@ class _RobotShellState extends State<RobotShell> {
     super.initState();
     _loadSavedLogo();
     _loadSavedAccessCode();
+    _loadSavedLogoDisplayOptions();
     _restartIdleTimer();
   }
 
@@ -160,6 +192,25 @@ class _RobotShellState extends State<RobotShell> {
 
     setState(() {
       _accessCode = savedAccessCode!;
+    });
+  }
+
+  Future<void> _loadSavedLogoDisplayOptions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedFitMode = LogoFitMode.fromStorageValue(
+      prefs.getString(AppConfig.logoFitKey),
+    );
+    final savedRotationTurns = _normalizeRotationTurns(
+      prefs.getInt(AppConfig.logoRotationKey) ?? 0,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _logoFitMode = savedFitMode;
+      _logoRotationTurns = savedRotationTurns;
     });
   }
 
@@ -280,6 +331,39 @@ class _RobotShellState extends State<RobotShell> {
         value.length >= AppConfig.minAccessCodeLength &&
         value.length <= AppConfig.maxAccessCodeLength;
     return isValidLength && RegExp(r'^\d+$').hasMatch(value);
+  }
+
+  int _normalizeRotationTurns(int value) {
+    return value.remainder(4);
+  }
+
+  Future<void> _changeLogoFitMode(LogoFitMode fitMode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(AppConfig.logoFitKey, fitMode.storageValue);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _logoFitMode = fitMode;
+    });
+    _restartIdleTimer();
+  }
+
+  Future<void> _changeLogoRotationTurns(int turns) async {
+    final normalizedTurns = _normalizeRotationTurns(turns);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(AppConfig.logoRotationKey, normalizedTurns);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _logoRotationTurns = normalizedTurns;
+    });
+    _restartIdleTimer();
   }
 
   Future<void> _showChangePasswordDialog() async {
@@ -419,6 +503,8 @@ class _RobotShellState extends State<RobotShell> {
               AppScreenState.idle => IdleView(
                 key: const ValueKey('idle'),
                 logoImagePath: _logoImagePath,
+                logoFitMode: _logoFitMode,
+                logoRotationTurns: _logoRotationTurns,
                 onTapEnter: _goToPassword,
               ),
               AppScreenState.password => SafeArea(
@@ -439,9 +525,13 @@ class _RobotShellState extends State<RobotShell> {
                 child: MainView(
                   key: const ValueKey('main'),
                   logoImagePath: _logoImagePath,
+                  logoFitMode: _logoFitMode,
+                  logoRotationTurns: _logoRotationTurns,
                   isPickingLogo: _isPickingLogo,
                   onPickLogo: _pickLogoImage,
                   onClearLogo: _clearLogoImage,
+                  onLogoFitModeChanged: _changeLogoFitMode,
+                  onLogoRotationChanged: _changeLogoRotationTurns,
                   onChangePassword: _showChangePasswordDialog,
                   onExit: _backToIdleFromMain,
                 ),
@@ -458,10 +548,14 @@ class IdleView extends StatelessWidget {
   const IdleView({
     super.key,
     required this.logoImagePath,
+    required this.logoFitMode,
+    required this.logoRotationTurns,
     required this.onTapEnter,
   });
 
   final String? logoImagePath;
+  final LogoFitMode logoFitMode;
+  final int logoRotationTurns;
   final VoidCallback onTapEnter;
 
   @override
@@ -477,6 +571,8 @@ class IdleView extends StatelessWidget {
           children: [
             _FullscreenLogo(
               imagePath: logoImagePath,
+              fitMode: logoFitMode,
+              rotationTurns: logoRotationTurns,
               emptyIcon: Icons.storefront_rounded,
               emptyText: '请选择 Logo',
             ),
@@ -501,11 +597,15 @@ class IdleView extends StatelessWidget {
 class _FullscreenLogo extends StatelessWidget {
   const _FullscreenLogo({
     required this.imagePath,
+    required this.fitMode,
+    required this.rotationTurns,
     required this.emptyIcon,
     required this.emptyText,
   });
 
   final String? imagePath;
+  final LogoFitMode fitMode;
+  final int rotationTurns;
   final IconData emptyIcon;
   final String emptyText;
 
@@ -516,13 +616,52 @@ class _FullscreenLogo extends StatelessWidget {
       return _LogoEmptyState(icon: emptyIcon, text: emptyText);
     }
 
-    return Image.file(
-      File(imagePath!),
-      width: double.infinity,
-      height: double.infinity,
-      fit: BoxFit.contain,
-      errorBuilder: (context, error, stackTrace) {
-        return _LogoEmptyState(icon: emptyIcon, text: emptyText);
+    return _RotatedLogo(
+      rotationTurns: rotationTurns,
+      child: Image.file(
+        File(imagePath!),
+        width: double.infinity,
+        height: double.infinity,
+        fit: fitMode.boxFit,
+        errorBuilder: (context, error, stackTrace) {
+          return _LogoEmptyState(icon: emptyIcon, text: emptyText);
+        },
+      ),
+    );
+  }
+}
+
+class _RotatedLogo extends StatelessWidget {
+  const _RotatedLogo({required this.rotationTurns, required this.child});
+
+  final int rotationTurns;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedTurns = rotationTurns.remainder(4);
+    if (normalizedTurns == 0) {
+      return child;
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final quarterTurns = normalizedTurns.isOdd;
+        final width = constraints.maxWidth;
+        final height = constraints.maxHeight;
+
+        return ClipRect(
+          child: Center(
+            child: Transform.rotate(
+              angle: normalizedTurns * math.pi / 2,
+              child: SizedBox(
+                width: quarterTurns ? height : width,
+                height: quarterTurns ? width : height,
+                child: child,
+              ),
+            ),
+          ),
+        );
       },
     );
   }
@@ -531,11 +670,15 @@ class _FullscreenLogo extends StatelessWidget {
 class _LogoFrame extends StatelessWidget {
   const _LogoFrame({
     required this.imagePath,
+    required this.fitMode,
+    required this.rotationTurns,
     required this.emptyIcon,
     required this.emptyText,
   });
 
   final String? imagePath;
+  final LogoFitMode fitMode;
+  final int rotationTurns;
   final IconData emptyIcon;
   final String emptyText;
 
@@ -552,12 +695,17 @@ class _LogoFrame extends StatelessWidget {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: hasImage
-            ? Image.file(
-                File(imagePath!),
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return _LogoEmptyState(icon: emptyIcon, text: emptyText);
-                },
+            ? _RotatedLogo(
+                rotationTurns: rotationTurns,
+                child: Image.file(
+                  File(imagePath!),
+                  width: double.infinity,
+                  height: double.infinity,
+                  fit: fitMode.boxFit,
+                  errorBuilder: (context, error, stackTrace) {
+                    return _LogoEmptyState(icon: emptyIcon, text: emptyText);
+                  },
+                ),
               )
             : _LogoEmptyState(icon: emptyIcon, text: emptyText),
       ),
@@ -876,21 +1024,94 @@ class _PasswordInputField extends StatelessWidget {
   }
 }
 
+class LogoDisplayControls extends StatelessWidget {
+  const LogoDisplayControls({
+    super.key,
+    required this.fitMode,
+    required this.rotationTurns,
+    required this.onFitModeChanged,
+    required this.onRotationChanged,
+  });
+
+  final LogoFitMode fitMode;
+  final int rotationTurns;
+  final ValueChanged<LogoFitMode> onFitModeChanged;
+  final ValueChanged<int> onRotationChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            SegmentedButton<LogoFitMode>(
+              segments: LogoFitMode.values
+                  .map(
+                    (mode) => ButtonSegment<LogoFitMode>(
+                      value: mode,
+                      label: Text(mode.label),
+                    ),
+                  )
+                  .toList(),
+              selected: {fitMode},
+              onSelectionChanged: (selection) {
+                onFitModeChanged(selection.first);
+              },
+            ),
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment<int>(value: 0, label: Text('0°')),
+                ButtonSegment<int>(value: 1, label: Text('90°')),
+                ButtonSegment<int>(value: 2, label: Text('180°')),
+                ButtonSegment<int>(value: 3, label: Text('270°')),
+              ],
+              selected: {rotationTurns.remainder(4)},
+              onSelectionChanged: (selection) {
+                onRotationChanged(selection.first);
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          '显示方式和旋转角度会保存到本机，待机页同步生效。',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: colorScheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+}
+
 class MainView extends StatelessWidget {
   const MainView({
     super.key,
     required this.logoImagePath,
+    required this.logoFitMode,
+    required this.logoRotationTurns,
     required this.isPickingLogo,
     required this.onPickLogo,
     required this.onClearLogo,
+    required this.onLogoFitModeChanged,
+    required this.onLogoRotationChanged,
     required this.onChangePassword,
     required this.onExit,
   });
 
   final String? logoImagePath;
+  final LogoFitMode logoFitMode;
+  final int logoRotationTurns;
   final bool isPickingLogo;
   final VoidCallback onPickLogo;
   final VoidCallback onClearLogo;
+  final ValueChanged<LogoFitMode> onLogoFitModeChanged;
+  final ValueChanged<int> onLogoRotationChanged;
   final VoidCallback onChangePassword;
   final VoidCallback onExit;
 
@@ -934,73 +1155,82 @@ class MainView extends StatelessWidget {
                 color: const Color(0xFF1E293B),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Logo 设置',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Logo 设置',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: Center(
+                    const SizedBox(height: 16),
+                    Center(
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(
-                          maxWidth: 560,
-                          maxHeight: 420,
-                        ),
-                        child: _LogoFrame(
-                          imagePath: logoImagePath,
-                          emptyIcon: Icons.image_rounded,
-                          emptyText: '尚未选择图片',
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: _LogoFrame(
+                            imagePath: logoImagePath,
+                            fitMode: logoFitMode,
+                            rotationTurns: logoRotationTurns,
+                            emptyIcon: Icons.image_rounded,
+                            emptyText: '尚未选择图片',
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      FilledButton.icon(
-                        onPressed: isPickingLogo ? null : onPickLogo,
-                        icon: isPickingLogo
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.image_rounded),
-                        label: Text(isPickingLogo ? '选择中...' : '选择 Logo'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: logoImagePath == null || isPickingLogo
-                            ? null
-                            : onClearLogo,
-                        icon: const Icon(Icons.delete_outline_rounded),
-                        label: const Text('清除 Logo'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: isPickingLogo ? null : onChangePassword,
-                        icon: const Icon(Icons.lock_reset_rounded),
-                        label: const Text('修改密码'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    '选中的图片会自动保存在本机，重启后仍然可用。',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    LogoDisplayControls(
+                      fitMode: logoFitMode,
+                      rotationTurns: logoRotationTurns,
+                      onFitModeChanged: onLogoFitModeChanged,
+                      onRotationChanged: onLogoRotationChanged,
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: isPickingLogo ? null : onPickLogo,
+                          icon: isPickingLogo
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.image_rounded),
+                          label: Text(isPickingLogo ? '选择中...' : '选择 Logo'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: logoImagePath == null || isPickingLogo
+                              ? null
+                              : onClearLogo,
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          label: const Text('清除 Logo'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: isPickingLogo ? null : onChangePassword,
+                          icon: const Icon(Icons.lock_reset_rounded),
+                          label: const Text('修改密码'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '选中的图片会自动保存在本机，重启后仍然可用。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

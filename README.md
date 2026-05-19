@@ -22,7 +22,7 @@
 - 默认密码：`2580`
 - 待机超时：`15` 秒
 - 密码页超时：`20` 秒
-- 当前版本：`1.0.3+4`
+- 当前版本：`1.0.4+5`
 
 相关配置目前在 [lib/main.dart](lib/main.dart) 的 `AppConfig` 中：
 
@@ -73,6 +73,7 @@ flutter build apk --release
 
 ```text
 build/app/outputs/flutter-apk/app-release.apk
+build/app/outputs/flutter-apk/robot-logo-app-v1.0.4.apk
 ```
 
 ## 发版
@@ -82,14 +83,14 @@ GitHub Actions 只在推送 `v*` 标签时自动构建 APK 并创建 GitHub Rele
 发布新版本示例：
 
 ```bash
-git tag v1.0.3
-git push origin v1.0.3
+git tag v1.0.4
+git push origin v1.0.4
 ```
 
 如果需要先升级应用版本号，修改 [pubspec.yaml](pubspec.yaml)：
 
 ```yaml
-version: 1.0.3+4
+version: 1.0.4+5
 ```
 
 ## 适用场景
